@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>App WebView 桥接测试</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117;
+      color: #e4e6eb;
+      padding: 16px;
+      padding-bottom: 80px;
+      line-height: 1.5;
+    }
+    h1 { font-size: 18px; margin-bottom: 4px; }
+    .subtitle { font-size: 12px; color: #8b8d97; margin-bottom: 20px; }
+    section {
+      background: #1a1d27;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+      border: 1px solid #2a2d3a;
+    }
+    section h2 {
+      font-size: 13px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    button {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      background: #3b82f6;
+      color: #fff;
+      flex: 1 1 auto;
+      min-width: 120px;
+    }
+    button:active { opacity: 0.85; }
+    button.secondary { background: #374151; }
+    button.danger { background: #dc2626; }
+    button.success { background: #16a34a; }
+    label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; }
+    input, textarea, select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #374151;
+      background: #0f1117;
+      color: #e4e6eb;
+      font-size: 13px;
+      margin-bottom: 10px;
+      font-family: inherit;
+    }
+    textarea { min-height: 72px; resize: vertical; font-family: ui-monospace, monospace; font-size: 12px; }
+    #log {
+      background: #0a0c10;
+      border: 1px solid #2a2d3a;
+      border-radius: 8px;
+      padding: 10px;
+      max-height: 280px;
+      overflow-y: auto;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-entry { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #1f2937; }
+    .log-entry:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .log-time { color: #6b7280; }
+    .log-ok { color: #4ade80; }
+    .log-err { color: #f87171; }
+    .log-info { color: #60a5fa; }
+    .log-native { color: #fbbf24; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-left: 8px;
+    }
+    .badge.in-app { background: #166534; color: #86efac; }
+    .badge.browser { background: #7c2d12; color: #fdba74; }
+    .device-card {
+      background: #0f1117;
+      border-radius: 8px;
+      padding: 10px;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #a5f3fc;
+      min-height: 40px;
+    }
+    .device-card.empty { color: #6b7280; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>App WebView 桥接测试 <span id="envBadge" class="badge browser">浏览器</span></h1>
+  <p class="subtitle">H5 ↔ 原生 uniwebview 协议调试页</p>
+
+  <!-- 原生 → H5 -->
+  <section>
+    <h2>原生调 H5 · receiveDeviceId</h2>
+    <p style="font-size:12px;color:#9ca3af;margin-bottom:10px;">
+      原生调用 <code>window.receiveDeviceId(data)</code>，下方展示最近一次收到的数据。
+    </p>
+    <div id="deviceInfo" class="device-card empty">等待原生回调 receiveDeviceId …</div>
+    <div class="btn-row" style="margin-top:10px;">
+      <button type="button" class="secondary" onclick="simulateReceiveDeviceId()">模拟原生回调</button>
+    </div>
+  </section>
+
+  <!-- H5 → 原生 -->
+  <section>
+    <h2>H5 调原生</h2>
+
+    <div class="btn-row">
+      <button type="button" onclick="callGetDeviceInfo()">获取设备信息</button>
+    </div>
+    <p style="font-size:11px;color:#6b7280;margin-bottom:12px;">uniwebview://getDeviceInfo</p>
+
+    <label>外部链接 URL</label>
+    <input id="browserUrl" type="url" value="https://www.google.com" placeholder="https://..." />
+    <div class="btn-row">
+      <button type="button" onclick="callOpenBrowser()">打开外部浏览器</button>
+    </div>
+    <p style="font-size:11px;color:#6b7280;margin-bottom:12px;">uniwebview://openBrowser?url=...</p>
+
+    <label>AF 事件 JSON</label>
+    <textarea id="afEventJson">{"eventName":"test_event","eventValue":{"key":"value"}}</textarea>
+    <div class="btn-row">
+      <button type="button" onclick="callAfEvent()">上报 AF 事件</button>
+    </div>
+    <p style="font-size:11px;color:#6b7280;margin-bottom:12px;">uniwebview://afEvent?value=...</p>
+
+    <label>屏幕方向</label>
+    <select id="orientation">
+      <option value="portrait">portrait 竖屏</option>
+      <option value="landscape">landscape 横屏</option>
+    </select>
+    <div class="btn-row">
+      <button type="button" onclick="callScreenOrientation()">设置屏幕方向</button>
+    </div>
+    <p style="font-size:11px;color:#6b7280;margin-bottom:12px;">uniwebview://screenOrientation?value=...</p>
+
+    <div class="btn-row">
+      <button type="button" class="success" onclick="callKeepScreenOn()">屏幕常亮</button>
+    </div>
+    <p style="font-size:11px;color:#6b7280;">uniwebview://keepScreenOn</p>
+  </section>
+
+  <!-- 日志 -->
+  <section>
+    <h2>调用日志</h2>
+    <div class="btn-row" style="margin-bottom:10px;">
+      <button type="button" class="secondary" onclick="clearLog()">清空日志</button>
+      <button type="button" class="danger" onclick="copyLog()">复制日志</button>
+    </div>
+    <div id="log"></div>
+  </section>
+
+  <script>
+    // ─── 工具 ───────────────────────────────────────────
+    const $ = (id) => document.getElementById(id);
+
+    function isInAppWebView() {
+      const ua = navigator.userAgent || '';
+      return /uniwebview|WebView|wv\)/i.test(ua) || typeof window.uni !== 'undefined';
+    }
+
+    function updateEnvBadge() {
+      const badge = $('envBadge');
+      if (isInAppWebView()) {
+        badge.textContent = 'App WebView';
+        badge.className = 'badge in-app';
+      } else {
+        badge.textContent = '浏览器（iframe 模拟）';
+        badge.className = 'badge browser';
+      }
+    }
+
+    function now() {
+      return new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    }
+
+    function log(msg, type = 'info') {
+      const el = $('log');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `<span class="log-time">[${now()}]</span> <span class="log-${type}">${escapeHtml(msg)}</span>`;
+      el.prepend(entry);
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function clearLog() {
+      $('log').innerHTML = '';
+      log('日志已清空', 'info');
+    }
+
+    function copyLog() {
+      const text = $('log').innerText;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => log('日志已复制到剪贴板', 'ok'));
+      } else {
+        log('剪贴板不可用', 'err');
+      }
+    }
+
+    /** 通过 iframe 触发 uniwebview:// 协议（兼容 iOS/Android WebView） */
+    function invokeNative(scheme) {
+      log(`→ ${scheme}`, 'info');
+      try {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = scheme;
+        document.body.appendChild(iframe);
+        setTimeout(() => document.body.removeChild(iframe), 300);
+        log('已发送协议请求', 'ok');
+      } catch (e) {
+        log(`调用失败: ${e.message}`, 'err');
+      }
+    }
+
+    // ─── H5 调原生 ─────────────────────────────────────
+    function callGetDeviceInfo() {
+      invokeNative('uniwebview://getDeviceInfo');
+    }
+
+    function callOpenBrowser() {
+      const url = $('browserUrl').value.trim();
+      if (!url) {
+        log('请填写 URL', 'err');
+        return;
+      }
+      invokeNative('uniwebview://openBrowser?url=' + encodeURIComponent(url));
+    }
+
+    function callAfEvent() {
+      const raw = $('afEventJson').value.trim();
+      if (!raw) {
+        log('请填写 AF 事件 JSON', 'err');
+        return;
+      }
+      try {
+        JSON.parse(raw);
+      } catch (e) {
+        log(`JSON 格式错误: ${e.message}`, 'err');
+        return;
+      }
+      invokeNative('uniwebview://afEvent?value=' + encodeURIComponent(raw));
+    }
+
+    function callScreenOrientation() {
+      const value = $('orientation').value;
+      invokeNative('uniwebview://screenOrientation?value=' + encodeURIComponent(value));
+    }
+
+    function callKeepScreenOn() {
+      invokeNative('uniwebview://keepScreenOn');
+    }
+
+    // ─── 原生调 H5 ─────────────────────────────────────
+    /**
+     * 原生调用入口
+     * @param {object|string} data 设备信息 JSON 或字符串
+     */
+    window.receiveDeviceId = function (data) {
+      let parsed = data;
+      if (typeof data === 'string') {
+        try {
+          parsed = JSON.parse(data);
+        } catch (e) {
+          log(`receiveDeviceId 解析失败: ${e.message}`, 'err');
+          parsed = { _raw: data };
+        }
+      }
+      const card = $('deviceInfo');
+      card.className = 'device-card';
+      card.textContent = JSON.stringify(parsed, null, 2);
+      log('← receiveDeviceId 收到数据:\n' + JSON.stringify(parsed, null, 2), 'native');
+    };
+
+    /** 浏览器内模拟原生回调，便于联调前自测 */
+    function simulateReceiveDeviceId() {
+      const mock = {
+        appsflyer: {
+          install_time: '2026-03-17 07:54:06.124',
+          appsflyer_id: '1769414044004-6419483779162926498',
+          af_message: 'organic install',
+          af_status: 'Organic',
+          is_first_launch: false,
+        },
+        gaid: '00000000-0000-0000-0000-000000000000',
+        device_id: 'android_mock_device_id',
+        id_vpn: false,
+        is_proxy: false,
+        is_sim: true,
+        pkg: 'com.example.app',
+        version_code: 100,
+        version_name: '1.0.0',
+      };
+      window.receiveDeviceId(mock);
+      log('已模拟原生调用 receiveDeviceId', 'ok');
+    }
+
+    // ─── 初始化 ────────────────────────────────────────
+    updateEnvBadge();
+    log('测试页已加载。在 App WebView 中打开可测试真实桥接。', 'info');
+    log('H5→原生: 点击上方按钮；原生→H5: 调用 window.receiveDeviceId(data)', 'info');
+  </script>
+</body>
+</html>
